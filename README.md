@@ -54,33 +54,29 @@ Before running the application locally, ensure you have the following installed:
 
 ## Running the Agents
 
-Open separate terminals for each agent.
+Open separate terminals for each agent. All commands should be run from the root directory of the project (`/usr/local/google/home/demart/a2a-samples/samples/python/agents/airbnb_planner_multiagent/`).
 
 ### 1. Run Airbnb Agent
 
 ```bash
-cd samples/python/agents/airbnb_planner_multiagent/airbnb_agent
 python3 -m airbnb_agent --port 10002
 ```
 
 ### 2. Run Weather Agent
 
 ```bash
-cd samples/python/agents/airbnb_planner_multiagent/weather_agent
 python3 -m weather_agent --port 10001
 ```
 
 ### 3. Run Calendar Agent
 
 ```bash
-cd samples/python/agents/airbnb_planner_multiagent/calendar_agent
 python3 -m calendar_agent --port 10007
 ```
 
 ### 4. Run Host Agent
 
 ```bash
-cd samples/python/agents/airbnb_planner_multiagent/host_agent
 python3 -m host_agent
 ```
 

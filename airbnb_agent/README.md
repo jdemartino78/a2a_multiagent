@@ -2,18 +2,6 @@
 
 This agent helps with searching for Airbnb accommodations. It is a remote agent that can be used by other agents.
 
-## Getting started
-
-1.  Create a `.env` file using the `example.env` file as a template. This file should contain the necessary environment variables, such as your `GOOGLE_API_KEY`.
-
-2.  Start the server from the root of the project:
-
-    ```bash
-    python3 -m airbnb_agent --port 10002
-    ```
-
-    The agent will be available at `http://localhost:10002`.
-
 ## Disclaimer
 
 Important: The sample code provided is for demonstration purposes and illustrates the mechanics of the Agent-to-Agent (A2A) protocol. When building production applications, it is critical to treat any agent operating outside of your direct control as a potentially untrusted entity.

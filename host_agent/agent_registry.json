@@ -1,0 +1,94 @@
+[
+  {
+    "name": "Horizon Agent - Tenant ABC",
+    "url": "http://localhost:10008",
+    "description": "Provides information about orders and inventory for a specific tenant.",
+    "version": "1.0",
+    "capabilities": {"streaming": true, "push_notifications": true},
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "get_order_status",
+        "name": "Get Order Status",
+        "description": "Retrieves the status of a specific order.",
+        "examples": ["what is the status of order 123?", "where is my order 456"],
+        "tags": ["type:horizon", "tenant_id:tenant-abc"]
+      }
+    ]
+  },
+  {
+    "name": "Horizon Agent - Tenant XYZ",
+    "url": "http://localhost:10009",
+    "description": "Provides information about orders and inventory for a specific tenant.",
+    "version": "1.0",
+    "capabilities": {"streaming": true, "push_notifications": true},
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "get_order_status",
+        "name": "Get Order Status",
+        "description": "Retrieves the status of a specific order.",
+        "examples": ["what is the status of order 123?", "where is my order 456"],
+        "tags": ["type:horizon", "tenant_id:tenant-xyz"]
+      }
+    ]
+  },
+  {
+    "name": "Weather Agent",
+    "url": "http://localhost:10001",
+    "description": "Provides weather forecasts.",
+    "version": "1.0",
+    "capabilities": {"streaming": true, "push_notifications": true},
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "get_weather",
+        "name": "Get Weather",
+        "description": "Provides the weather forecast for a given city.",
+        "examples": ["what is the weather in London?", "weather in Paris"],
+        "tags": ["type:weather"]
+      }
+    ]
+  },
+  {
+    "name": "Calendar Agent",
+    "url": "http://localhost:10007",
+    "description": "Manages calendar events.",
+    "version": "1.0",
+    "capabilities": {"streaming": true, "push_notifications": true},
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "check_availability",
+        "name": "Check Availability",
+        "description": "Checks a user's availability for a time using their Google Calendar.",
+        "examples": ["Am I free from 10am to 11am tomorrow?"],
+        "tags": ["type:calendar"]
+      }
+    ]
+  },
+  {
+    "name": "Airbnb Agent",
+    "url": "http://localhost:10002",
+    "description": "Helps with searching accommodation",
+    "version": "1.0.0",
+    "capabilities": {"streaming": true, "push_notifications": true},
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+        {
+            "id": "airbnb_search",
+            "name": "Search airbnb accommodation",
+            "description": "Helps with accommodation search using airbnb",
+            "tags": ["type:airbnb"],
+            "examples": [
+                "Please find a room in LA, CA, April 15, 2025, checkout date is april 18, 2 adults"
+            ]
+        }
+    ]
+  }
+]

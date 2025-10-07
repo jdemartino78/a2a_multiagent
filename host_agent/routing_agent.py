@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from a2a.client import A2ACardResolver
 from a2a.types import (
-    AgentCard,
+    AgentCard as A2AAgentCard,
     MessageSendParams,
     Part,
     SendMessageRequest,
@@ -28,6 +28,8 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+class AgentCard(A2AAgentCard):
+    tags: dict | None = None
 
 def convert_part(part: Part, tool_context: ToolContext):
     """Convert a part to text. Only text parts are supported."""
@@ -81,59 +83,27 @@ class RoutingAgent:
         self.cards: dict[str, AgentCard] = {}
         self.agents: str = ""
         self._base_instruction: str = ""
+        self.tenant_id: str | None = None
 
     async def _async_init_components(
         self,
-        remote_agent_addresses: list[str] | None = None,
-        remote_agent_base_urls: list[str] | None = None,
+        agent_cards: list[AgentCard] | None = None,
     ) -> None:
         """Asynchronous part of initialization."""
-        if remote_agent_base_urls:
-            async with httpx.AsyncClient(timeout=30) as client:
-                for base_url in remote_agent_base_urls:
-                    well_known_url = f"{base_url.rstrip('/')}/.well-known/agent-card.json"
-                    try:
-                        response = await client.get(well_known_url)
-                        response.raise_for_status()
-                        card = AgentCard.model_validate(response.json())
-
-                        remote_connection = RemoteAgentConnections(
-                            agent_card=card, agent_url=base_url
-                        )
-                        self.remote_agent_connections[card.name] = remote_connection
-                        self.cards[card.name] = card
-                    except httpx.RequestError as e:
-                        print(
-                            f"ERROR: Failed to get agent card from {well_known_url}: {e}"
-                        )
-                    except Exception as e:
-                        print(
-                            f"ERROR: Failed to initialize connection for {base_url}: {e}"
-                        )
-
-        if remote_agent_addresses:
-            # Use a single httpx.AsyncClient for all card resolutions for efficiency
-            async with httpx.AsyncClient(timeout=30) as client:
-                for address in remote_agent_addresses:
-                    card_resolver = A2ACardResolver(
-                        client, address
-                    )  # Constructor is sync
-                    try:
-                        card = (
-                            await card_resolver.get_agent_card()
-                        )  # get_agent_card is async
-
-                        remote_connection = RemoteAgentConnections(
-                            agent_card=card, agent_url=address
-                        )
-                        self.remote_agent_connections[card.name] = remote_connection
-                        self.cards[card.name] = card
-                    except httpx.ConnectError as e:
-                        print(f"ERROR: Failed to get agent card from {address}: {e}")
-                    except Exception as e:  # Catch other potential errors
-                        print(
-                            f"ERROR: Failed to initialize connection for {address}: {e}"
-                        )
+        if agent_cards:
+            for card in agent_cards:
+                try:
+                    # The URL for the remote agent is in the card itself
+                    agent_url = str(card.url)
+                    remote_connection = RemoteAgentConnections(
+                        agent_card=card, agent_url=agent_url
+                    )
+                    self.remote_agent_connections[card.name] = remote_connection
+                    self.cards[card.name] = card
+                except Exception as e:
+                    print(
+                        f"ERROR: Failed to initialize connection for {card.name}: {e}"
+                    )
 
         # Populate self.agents using the logic from original __init__ (via list_remote_agents)
         agent_info = []
@@ -144,14 +114,15 @@ class RoutingAgent:
     @classmethod
     async def create(
         cls,
-        remote_agent_addresses: list[str] | None = None,
-        remote_agent_base_urls: list[str] | None = None,
+        agent_cards: list[AgentCard] | None = None,
         task_callback: TaskUpdateCallback | None = None,
+        tenant_id: str | None = None,
     ) -> "RoutingAgent":
         """Create and asynchronously initialize an instance of the RoutingAgent."""
         instance = cls(task_callback)
+        instance.tenant_id = tenant_id
         await instance._async_init_components(
-            remote_agent_addresses, remote_agent_base_urls
+            agent_cards=agent_cards
         )
         return instance
 
@@ -168,7 +139,6 @@ class RoutingAgent:
 
     def root_instruction(self, context: ReadonlyContext) -> str:
         """Generate the root instruction for the RoutingAgent."""
-        current_agent = self.check_active_agent(context)
         return f"""
         **Role:** You are an expert Routing Delegator. Your primary function is to accurately delegate user inquiries to the appropriate specialized remote agents based on their advertised skills.
 
@@ -176,34 +146,18 @@ class RoutingAgent:
 
         * **Current Date:** The current date is Thursday, October 2, 2025.
         * **Skill-based Delegation:** Your primary decision-making criterion for delegation is the `skills` advertised by each agent. You must select the agent whose skills best match the user\'s request.
-        * **Task Delegation:** Utilize the `send_message` function to assign actionable tasks to remote agents.
+        * **Task Delegation:** Utilize the `send_message` function to delegate tasks. You must specify the **type** of agent required by using the `agent_type` parameter (e.g., "weather", "horizon", "calendar").
         * **CRITICAL:** You MUST NOT wrap tool calls in `print()` statements. Call the function directly, for example: `send_message(...)`.
         * **Contextual Awareness for Remote Agents:** If a remote agent repeatedly requests user confirmation, assume it lacks access to the         full conversation history. In such cases, enrich the task description with all necessary contextual information relevant to that         specific agent.
         * **Autonomous Agent Engagement:** Never seek user permission before engaging with remote agents. If multiple agents are required to         fulfill a request, connect with them directly without requesting user preference or confirmation.
         * **Transparent Communication:** Always present the complete and detailed response from the remote agent to the user.
         * **User Confirmation Relay:** If a remote agent asks for confirmation, and the user has not already provided it, relay this         confirmation request to the user.
-        * **Focused Information Sharing:** Provide remote agents with only relevant contextual information. Avoid extraneous details.
-        * **No Redundant Confirmations:** Do not ask remote agents for confirmation of information or actions.
-        * **Tool Reliance:** Strictly rely on available tools to address user requests. Do not generate responses based on assumptions. If         information is insufficient, request clarification from the user.
-        * **Prioritize Recent Interaction:** Focus primarily on the most recent parts of the conversation when processing requests.
-        * **Active Agent Prioritization:** If an active agent is already engaged, route subsequent related requests to that agent using the         appropriate task update tool.
 
         **Agent Roster:**
 
         Here are the available agents and their skills:
         {self.agents}
         """
-
-    def check_active_agent(self, context: ReadonlyContext):
-        state = context.state
-        if (
-            "session_id" in state
-            and "session_active" in state
-            and state["session_active"]
-            and "active_agent" in state
-        ):
-            return {"active_agent": f"{state['active_agent']}"}
-        return {"active_agent": "None"}
 
     def before_model_callback(self, callback_context: CallbackContext, llm_request):
         # To reduce log verbosity, we will not be logging the entire request.
@@ -229,68 +183,85 @@ class RoutingAgent:
             if card.skills:
                 skills = []
                 for skill in card.skills:
-                    # Assuming skill is a Pydantic model with name and description
                     try:
                         skills.append(skill.model_dump(exclude_none=True))
                     except Exception:
-                        # If skill is not a model, it might be a dict or a string
                         skills.append(str(skill))
                 agent_info["skills"] = skills
             remote_agent_info.append(agent_info)
         return remote_agent_info
 
     async def send_message(
-        self, agent_name: str, task: str, tool_context: ToolContext
+        self, agent_type: str, task: str, tool_context: ToolContext
     ):
-        """Sends a task to remote seller agent.
-
-        This will send a message to the remote agent named agent_name.
+        """Sends a task to a remote agent based on its type and the session context.
 
         Args:
-            agent_name: The name of the agent to send the task to.
-            task: The comprehensive conversation context summary
-                and goal to be achieved regarding user inquiry and purchase request.
+            agent_type: The type of agent to send the task to (e.g., "weather", "horizon", "calendar").
+            task: The comprehensive task description for the agent.
             tool_context: The tool context this method runs in.
 
         Yields:
             A dictionary of JSON data.
         """
-        logging.info(f"Sending task to agent: {agent_name}")
+        logging.info(f"Attempting to send task to agent of type: {agent_type}")
         logging.info(f"Task content: {task}")
-        if agent_name not in self.remote_agent_connections:
-            raise ValueError(f"Agent {agent_name} not found")
+
         state = tool_context.state
+        filter_query = {"type": agent_type}
+
+        tenant_specific_agents = ["horizon"]
+        if agent_type in tenant_specific_agents:
+            tenant_id = self.tenant_id
+            if not tenant_id:
+                raise ValueError(f"Tenant ID is required for agent type '{agent_type}' but was not found in session.")
+            filter_query["tenant_id"] = tenant_id
+
+        found_card = None
+        for card in self.cards.values():
+            if not card.skills:
+                continue
+            for skill in card.skills:
+                if not skill.tags:
+                    continue
+
+                skill_tags_dict = {}
+                for tag in skill.tags:
+                    if ":" in tag:
+                        key, value = tag.split(":", 1)
+                        skill_tags_dict[key] = value
+
+                if filter_query.items() <= skill_tags_dict.items():
+                    found_card = card
+                    break
+            if found_card:
+                break
+
+        if not found_card:
+            raise ValueError(f"Could not find a registered agent matching the query: {filter_query}")
+
+        agent_name = found_card.name
+        logging.info(f"Found matching agent '{agent_name}' for query {filter_query}")
+
         state["active_agent"] = agent_name
-        client = self.remote_agent_connections[agent_name]
+        client = self.remote_agent_connections.get(agent_name)
 
         if not client:
             raise ValueError(f"Client not available for {agent_name}")
 
         context_id = state.get("context_id") or str(uuid.uuid4())
         state["context_id"] = context_id
-        logging.info(f"Using context_id: {context_id}")
 
-        message_id = ""
-        metadata = {}
-        if "input_message_metadata" in state:
-            metadata.update(**state["input_message_metadata"])
-            if "message_id" in state["input_message_metadata"]:
-                message_id = state["input_message_metadata"]["message_id"]
-        if not message_id:
-            message_id = str(uuid.uuid4())
+        message_id = str(uuid.uuid4())
 
         payload = {
             "message": {
                 "role": "user",
-                "parts": [
-                    {"type": "text", "text": task}
-                ],  # Use the 'task' argument here
+                "parts": [{"type": "text", "text": task}],
                 "messageId": message_id,
+                "contextId": context_id,
             },
         }
-
-        if context_id:
-            payload["message"]["contextId"] = context_id
 
         logging.info(
             f"--- Sending Payload to {agent_name} ---\n{json.dumps(payload, indent=2)}"
@@ -306,48 +277,47 @@ class RoutingAgent:
             f"--- Received Send Response from {agent_name} ---\n{send_response.model_dump_json(indent=2, exclude_none=True)}"
         )
 
-        if not isinstance(send_response.root, SendMessageSuccessResponse):
-            logging.error("received non-success response. Aborting get task ")
+        if not isinstance(send_response.root, SendMessageSuccessResponse) or not isinstance(send_response.root.result, Task):
+            logging.error("Received a non-successful or non-task response.")
             return None
 
-        if not isinstance(send_response.root.result, Task):
-            logging.error("received non-task response. Aborting get task ")
-            return None
-
-        new_task_id = send_response.root.result.id
-        if new_task_id:
-            logging.info(f"Received new task_id: {new_task_id}")
-
-        if send_response.root.result:
-            logging.info(
-                f"--- Returning Task from {agent_name} ---\n{send_response.root.result.model_dump_json(indent=2, exclude_none=True)}"
-            )
+        logging.info(
+            f"--- Returning Task from {agent_name} ---\n{send_response.root.result.model_dump_json(indent=2, exclude_none=True)}"
+        )
         return send_response.root.result
 
 
-def _get_initialized_routing_agent_sync() -> Agent:
-    """Synchronously creates and initializes the RoutingAgent."""
+async def get_initialized_routing_agent_async(tenant_id: str | None = None) -> Agent:
+    """Asynchronously creates and initializes the RoutingAgent for a specific tenant."""
+    # Load all agent cards from the registry file
+    registry_path = os.path.join(os.path.dirname(__file__), 'agent_registry.json')
+    with open(registry_path, 'r') as f:
+        all_cards_data = json.load(f)
 
-    async def _async_main() -> Agent:
-        routing_agent_instance = await RoutingAgent.create(
-            remote_agent_base_urls=[
-                os.getenv("AIR_AGENT_URL", "http://localhost:10002"),
-                os.getenv("WEA_AGENT_URL", "http://localhost:10001"),
-                os.getenv("CAL_AGENT_URL", "http://localhost:10007"),
-            ]
-        )
-        return routing_agent_instance.create_agent()
+    # Filter the cards based on the tenant_id
+    filtered_cards_data = []
+    for card_data in all_cards_data:
+        is_tenant_specific = False
+        card_tenant_id = None
 
-    try:
-        return asyncio.run(_async_main())
-    except RuntimeError as e:
-        if "asyncio.run() cannot be called from a running event loop" in str(e):
-            print(
-                f"Warning: Could not initialize RoutingAgent with asyncio.run(): {e}. "
-                "This can happen if an event loop is already running (e.g., in Jupyter). "
-                "Consider initializing RoutingAgent within an async function in your application."
-            )
-        raise
+        if card_data.get("skills"):
+            for skill in card_data["skills"]:
+                if skill.get("tags"):
+                    for tag in skill["tags"]:
+                        if tag.startswith("tenant_id:"):
+                            is_tenant_specific = True
+                            card_tenant_id = tag.split(":", 1)[1]
+                            break
+                if is_tenant_specific:
+                    break
+        
+        # Include the card if it's not tenant-specific, or if it matches the current tenant
+        if not is_tenant_specific or (is_tenant_specific and card_tenant_id == tenant_id):
+            filtered_cards_data.append(card_data)
 
+    agent_cards = [AgentCard.model_validate(card) for card in filtered_cards_data]
 
-root_agent = _get_initialized_routing_agent_sync()
+    routing_agent_instance = await RoutingAgent.create(
+        agent_cards=agent_cards, tenant_id=tenant_id
+    )
+    return routing_agent_instance.create_agent()

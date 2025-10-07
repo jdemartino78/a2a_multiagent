@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sys
 import traceback  # Import the traceback module
 from collections.abc import AsyncIterator
 from pprint import pformat
@@ -10,19 +11,14 @@ from google.adk.events import Event
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from .routing_agent import root_agent as routing_agent
+from . import routing_agent
 
 APP_NAME = "routing_app"
 USER_ID = "default_user"
 SESSION_ID = "default_session"
 
 SESSION_SERVICE = InMemorySessionService()
-ROUTING_AGENT_RUNNER = Runner(
-    agent=routing_agent,
-    app_name=APP_NAME,
-    session_service=SESSION_SERVICE,
-)
-
+GLOBAL_TENANT_ID = None  # Use a global for the static tenant ID
 LAST_USER_MESSAGE = None
 
 async def get_response_from_agent(
@@ -33,13 +29,21 @@ async def get_response_from_agent(
     global LAST_USER_MESSAGE
 
     try:
+        # Use the global tenant_id set at startup
+        tenant_agent = await routing_agent.get_initialized_routing_agent_async(tenant_id=GLOBAL_TENANT_ID)
+        tenant_runner = Runner(
+            agent=tenant_agent,
+            app_name=APP_NAME,
+            session_service=SESSION_SERVICE,
+        )
+
         if message.lower() == "done" and LAST_USER_MESSAGE:
             new_message_content = types.Content(role="user", parts=[types.Part(text=LAST_USER_MESSAGE)])
             LAST_USER_MESSAGE = None
         else:
             new_message_content = types.Content(role="user", parts=[types.Part(text=message)])
 
-        event_iterator: AsyncIterator[Event] = ROUTING_AGENT_RUNNER.run_async(
+        event_iterator: AsyncIterator[Event] = tenant_runner.run_async(
             user_id=USER_ID,
             session_id=SESSION_ID,
             new_message=new_message_content,
@@ -109,10 +113,19 @@ async def get_response_from_agent(
 
 async def main():
     """Main gradio app."""
+    global GLOBAL_TENANT_ID
+    # Manual argument parsing
+    args = dict(arg.split('=') for arg in sys.argv[1:] if '=' in arg)
+    port = int(args.get("--port", 8083))
+    GLOBAL_TENANT_ID = args.get("--tenant-id")
+
     print("Creating ADK session...")
     await SESSION_SERVICE.create_session(
         app_name=APP_NAME, user_id=USER_ID, session_id=SESSION_ID
     )
+    if GLOBAL_TENANT_ID:
+        print(f"Session configured for tenant: {GLOBAL_TENANT_ID}")
+
     print("ADK session created successfully.")
 
     with gr.Blocks(
@@ -134,10 +147,10 @@ async def main():
             description="This assistant can help you to check weather and find airbnb accommodation",
         )
 
-    print("Launching Gradio interface...")
+    print(f"Launching Gradio interface on port {port}...")
     demo.queue().launch(
         server_name="0.0.0.0",
-        server_port=8083,
+        server_port=port,
     )
     print("Gradio application has been shut down.")
 

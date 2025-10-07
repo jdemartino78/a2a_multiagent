@@ -1,103 +1,79 @@
-# Build Multi-Agent Systems using A2A SDK
+# Multi-Agent Airbnb Planner
 
-----
-> **⚠️ DISCLAIMER**: THIS DEMO IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.
->
-> **⚠️ Important:** A2A is a work in progress (WIP) thus, in the near future there might be changes that are different from what demonstrated here.
-----
-
-This document describes a web application demonstrating the integration of Agent2Agent (A2A), Google Agent Development Kit (ADK) for multi-agent orchestration with Model Context Protocol (MCP) clients. The application features a host agent coordinating tasks between remote agents that interact with various MCP servers to fulfill user requests.
+This project implements a multi-agent system designed to assist with planning a trip. It features a central `host_agent` that acts as an orchestrator, routing user requests to a variety of specialized agents. The system has been refactored to support a secure, multi-tenant architecture.
 
 ## Architecture
 
-The application utilizes a multi-agent architecture where a host agent delegates tasks to remote agents (Airbnb, Weather, and Calendar) based on the user's query. These agents then interact with corresponding MCP servers.
+The system now uses a registry-based discovery mechanism. The `host_agent` loads agent information from `host_agent/agent_registry.json` at startup. This file contains "agent cards" with metadata that the host agent's LLM uses to route requests to the appropriate downstream agent.
 
-![architecture](assets/A2A_multi_agent.png)
+This architecture supports both global agents (like `weather_agent`) and tenant-specific agents (like `horizon_agent`). Each tenant gets their own instance of the `host_agent`, which is configured at startup with the appropriate `tenant_id`.
 
-### App UI
+For a detailed explanation of the multi-tenancy architecture, see [`host_agent/MULTI_TENANCY_README.md`](./host_agent/MULTI_TENANCY_README.md).
 
-![screenshot](assets/screenshot.png)
+## Getting Started
 
-## Setup and Deployment
+### 1. Installation
 
-### Prerequisites
-
-Before running the application locally, ensure you have the following installed:
-
-1.  **Node.js:** Required to run the Airbnb MCP server (if testing its functionality locally).
-2.  **Python 3.13:** Python 3.13 is required to run a2a-sdk.
-
-### Set up .env files
-
--   Create a `.env` file in `airbnb_agent` and `weather_agent` folders with the following content:
-
-    ```bash
-    GOOGLE_API_KEY="your_api_key_here"
-    ```
-
--   Create a `.env` file in `calendar_agent` folder with the following content:
-
-    ```bash
-    GOOGLE_API_KEY="your_api_key_here"
-    ```
-
--   Create a `.env` file in `host_agent/` folder with the following content:
-
-    ```bash
-    GOOGLE_GENAI_USE_VERTEXAI=TRUE
-    GOOGLE_CLOUD_PROJECT="your project"
-    GOOGLE_CLOUD_LOCATION=global
-    AIR_AGENT_URL=http://localhost:10002
-    WEA_AGENT_URL=http://localhost:10001
-    CAL_AGENT_URL=http://localhost:10007
-    ```
-
-## Running the Agents
-
-Open separate terminals for each agent. All commands should be run from the root directory of the project (`/usr/local/google/home/demart/a2a-samples/samples/python/agents/airbnb_planner_multiagent/`).
-
-### 1. Run Airbnb Agent
+This project uses Python >=3.13 and manages dependencies via `pyproject.toml`. Install the necessary libraries by running the following command from the project root directory:
 
 ```bash
-python3 -m airbnb_agent --port 10002
+pip install -e .
 ```
 
-### 2. Run Weather Agent
+### 2. Environment Variables
 
+Ensure you have a `.env` file in the project root or have set the necessary environment variables for API keys (e.g., `GOOGLE_API_KEY`).
+
+### 3. Running the Agents
+
+To run the system, you must start all downstream agents and a `host_agent` instance for each tenant. Open a separate terminal for each of the following commands and run them from the project root directory.
+
+**Terminal 1: Start the Weather Agent**
 ```bash
-python3 -m weather_agent --port 10001
+python -m weather_agent
 ```
 
-### 3. Run Calendar Agent
-
+**Terminal 2: Start the Calendar Agent**
 ```bash
-python3 -m calendar_agent --port 10007
+python -m calendar_agent
 ```
 
-### 4. Run Host Agent
-
+**Terminal 3: Start the Horizon Agent for Tenant 'tenant-abc'**
 ```bash
-python3 -m host_agent
+python -m horizon_agent --port 10008
 ```
 
-## 5. Test at the UI
+**Terminal 4: Start the Horizon Agent for Tenant 'tenant-xyz'**
+```bash
+python -m horizon_agent --port 10009
+```
 
-Here are example questions:
+**Terminal 5: Start the Airbnb Agent**
+```bash
+python -m airbnb_agent
+```
 
--   "Tell me about weather in LA, CA"
--   "Please find a room in LA, CA, June 20-25, 2025, two adults"
--   "What are my meetings tomorrow?" (Note: For calendar queries, you might be prompted to authorize access to your Google Calendar. After authorization, type "done" in the chat to proceed.)
+**Terminal 6: Start the Host Agent for Tenant 'tenant-abc'**
+```bash
+python -m host_agent --port 8083 --tenant-id tenant-abc
+```
 
-## References
+**Terminal 7: Start the Host Agent for Tenant 'tenant-xyz'**
+```bash
+python -m host_agent --port 8084 --tenant-id tenant-xyz
+```
 
--   <https://github.com/google/a2a-python>
--   <https://codelabs.developers.google.com/intro-a2a-purchasing-concierge#1>
--   <https://google.github.io/adk-docs/>
+### 4. Interacting with the System
 
-## Disclaimer
+Once all agents are running, you can interact with the system via the Gradio UI for each tenant.
 
-Important: The sample code provided is for demonstration purposes and illustrates the mechanics of the Agent-to-Agent (A2A) protocol. When building production applications, it is critical to treat any agent operating outside of your direct control as a potentially untrusted entity.
+*   **For Tenant 'tenant-abc'**: Open your browser to **http://localhost:8083**
+*   **For Tenant 'tenant-xyz'**: Open your browser to **http://localhost:8084**
 
-All data received from an external agent—including but not limited to its AgentCard, messages, artifacts, and task statuses—should be handled as untrusted input. For example, a malicious agent could provide an AgentCard containing crafted data in its fields (e.g., description, name, skills.description). If this data is used without sanitization to construct prompts for a Large Language Model (LLM), it could expose your application to prompt injection attacks. Failure to properly validate and sanitize this data before use can introduce security vulnerabilities into your application.
+You can now chat directly with the host agent for that tenant. For example, if you are on the UI for `tenant-abc`, you can ask:
 
-Developers are responsible for implementing appropriate security measures, such as input validation and secure handling of credentials to protect their systems and users.
+```
+What is the status of my order 123?
+```
+
+The host agent will automatically route your request to the correct `horizon_agent` for `tenant-abc`.

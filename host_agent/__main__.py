@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import sys
@@ -21,6 +22,7 @@ SESSION_SERVICE = InMemorySessionService()
 GLOBAL_TENANT_ID = None  # Use a global for the static tenant ID
 LAST_USER_MESSAGE = None
 
+
 async def get_response_from_agent(
     message: str,
     history: list[gr.ChatMessage],
@@ -30,7 +32,9 @@ async def get_response_from_agent(
 
     try:
         # Use the global tenant_id set at startup
-        tenant_agent = await routing_agent.get_initialized_routing_agent_async(tenant_id=GLOBAL_TENANT_ID)
+        tenant_agent = await routing_agent.get_initialized_routing_agent_async(
+            tenant_id=GLOBAL_TENANT_ID
+        )
         tenant_runner = Runner(
             agent=tenant_agent,
             app_name=APP_NAME,
@@ -38,10 +42,14 @@ async def get_response_from_agent(
         )
 
         if message.lower() == "done" and LAST_USER_MESSAGE:
-            new_message_content = types.Content(role="user", parts=[types.Part(text=LAST_USER_MESSAGE)])
+            new_message_content = types.Content(
+                role="user", parts=[types.Part(text=LAST_USER_MESSAGE)]
+            )
             LAST_USER_MESSAGE = None
         else:
-            new_message_content = types.Content(role="user", parts=[types.Part(text=message)])
+            new_message_content = types.Content(
+                role="user", parts=[types.Part(text=message)]
+            )
 
         event_iterator: AsyncIterator[Event] = tenant_runner.run_async(
             user_id=USER_ID,
@@ -67,9 +75,7 @@ async def get_response_from_agent(
                             isinstance(response_content, dict)
                             and "response" in response_content
                         ):
-                            formatted_response_data = response_content[
-                                "response"
-                            ]
+                            formatted_response_data = response_content["response"]
                         else:
                             formatted_response_data = response_content
                         formatted_response = f"""json
@@ -79,12 +85,12 @@ async def get_response_from_agent(
                             role="assistant",
                             content=f"**Tool Response from {part.function_response.name}**\n{formatted_response}",
                         )
-            
+
             if event.actions and event.actions.requested_auth_configs:
                 LAST_USER_MESSAGE = message
                 yield gr.ChatMessage(
                     role="assistant",
-                    content="Authorization is required. Please complete the authorization and then type 'done' to continue."
+                    content="Authorization is required. Please complete the authorization and then type 'done' to continue.",
                 )
                 return
 
@@ -96,7 +102,7 @@ async def get_response_from_agent(
                     )
                 elif event.actions and event.actions.escalate:
                     final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
-                
+
                 if final_response_text:
                     yield gr.ChatMessage(
                         role="assistant", content=final_response_text
@@ -114,10 +120,18 @@ async def get_response_from_agent(
 async def main():
     """Main gradio app."""
     global GLOBAL_TENANT_ID
-    # Manual argument parsing
-    args = dict(arg.split('=') for arg in sys.argv[1:] if '=' in arg)
-    port = int(args.get("--port", 8083))
-    GLOBAL_TENANT_ID = args.get("--tenant-id")
+
+    parser = argparse.ArgumentParser(description="A2A Host Agent")
+    parser.add_argument(
+        "--port", type=int, default=8083, help="Port to run the Gradio interface on"
+    )
+    parser.add_argument(
+        "--tenant-id", type=str, help="The tenant ID to use for the session"
+    )
+    args = parser.parse_args()
+
+    port = args.port
+    GLOBAL_TENANT_ID = args.tenant_id
 
     print("Creating ADK session...")
     await SESSION_SERVICE.create_session(
@@ -128,9 +142,7 @@ async def main():
 
     print("ADK session created successfully.")
 
-    with gr.Blocks(
-        theme=gr.themes.Ocean(), title="A2A Host Agent with Logo"
-    ) as demo:
+    with gr.Blocks(theme=gr.themes.Ocean(), title="A2A Host Agent with Logo") as demo:
         gr.Image(
             "https://a2a-protocol.org/latest/assets/a2a-logo-black.svg",
             width=100,

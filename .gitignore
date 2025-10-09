@@ -4,7 +4,14 @@ __pycache__/
 *.pyd
 *.pyo
 *.egg-info/
-.env
+
+# Environment variables & Secrets
+# Ignore all .env files in any directory
+**/.env
+
+# Locally generated keys
+*.pem
+*.pub
 
 # Virtual environment
 .venv/
@@ -14,9 +21,27 @@ ENV/
 env.bak/
 venv.bak/
 
+# Database files
+*.db
+*.db-journal
+
 # Editors
 .vscode/
 .idea/
 
 # Logs
 *.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS-specific
+.DS_Store
+Thumbs.db

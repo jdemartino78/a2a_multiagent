@@ -30,6 +30,8 @@ from google.adk.tools.openapi_tool.openapi_spec_parser.tool_auth_handler import 
 )
 from google.genai import types
 
+from auth_lib.validator import is_token_valid
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -223,6 +225,16 @@ class ADKAgentExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ):
+        # First, validate the authorization token from the incoming request headers.
+        auth_header = context.call_context.state.get("headers", {}).get("authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise Exception("Missing or invalid Authorization header.")
+
+        token = auth_header.split(" ")[1]
+        is_valid, message = is_token_valid(token)
+        if not is_valid:
+            raise Exception(f"Invalid token: {message}")
+
         # Run the agent until either complete or the task is suspended.
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         # Immediately notify that the task is submitted.

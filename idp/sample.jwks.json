@@ -1,0 +1,13 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "e": "AQAB",
+      "use": "sig",
+      "kid": "a2a-mock-idp-key",
+      "alg": "RS256",
+      "n": "your-key-goes-here"
+    }
+  ]
+}
+

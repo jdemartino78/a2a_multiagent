@@ -23,6 +23,9 @@ from a2a.types import (
     AgentCapabilities,
     AgentCard,
     AgentSkill,
+    OAuth2SecurityScheme,
+    OAuthFlows,
+    AuthorizationCodeOAuthFlow,
 )
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
@@ -51,27 +54,49 @@ def main():
     parser.add_argument(
         "--log-level", default=DEFAULT_LOG_LEVEL, help="Uvicorn log level."
     )
+    parser.add_argument(
+        "--tenant-id", required=True, help="The tenant ID for this agent instance."
+    )
     args = parser.parse_args()
 
     skill = AgentSkill(
         id="get_order_status",
         name="Get Order Status",
-        description="Gets the status of a specific order.",
-        tags=["orders"],
-        examples=["What is the status of my order 123?"],
+        description="Retrieves the status of a specific order.",
+        tags=["type:horizon", f"tenant_id:{args.tenant_id}"],
+        examples=["what is the status of order 123?", "where is my order 456"],
     )
 
-    app_url = os.environ.get("APP_URL", f"http://{args.host}:{args.port}")
+    app_url = os.environ.get("APP_URL", f"http://localhost:{args.port}")
+    idp_url = os.environ.get("IDP_URL", "http://localhost:5000")
+
+    oauth_scheme = OAuth2SecurityScheme(
+        flows=OAuthFlows(
+            authorizationCode=AuthorizationCodeOAuthFlow(
+                authorizationUrl=f"{idp_url}/authorize",
+                tokenUrl=f"{idp_url}/generate-token",
+                scopes={
+                    "openid": "OpenID Connect scope.",
+                    "profile": "Read user profile.",
+                    "email": "Read user email.",
+                    "api:read": "Read API access.",
+                },
+            )
+        )
+    )
 
     agent_card = AgentCard(
-        name="Horizon Agent",
-        description="Agent that can check order status for the Horizon tenant.",
+        name=f"Horizon Agent - {args.tenant_id.upper()}",
+        description=(
+            "Provides information about orders and inventory for a specific tenant."
+        ),
         url=app_url,
-        version="1.0.0",
+        version="1.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
         capabilities=AgentCapabilities(streaming=True),
         skills=[skill],
+        securitySchemes={"oauth2": oauth_scheme},
     )
 
     runner = Runner(
@@ -81,7 +106,7 @@ def main():
         session_service=InMemorySessionService(),
         memory_service=InMemoryMemoryService(),
     )
-    agent_executor = ADKAgentExecutor(runner, agent_card)
+    agent_executor = ADKAgentExecutor(runner, agent_card, args.tenant_id)
 
     request_handler = DefaultRequestHandler(
         agent_executor=agent_executor, task_store=InMemoryTaskStore()

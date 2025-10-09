@@ -30,6 +30,8 @@ from google.adk.tools.openapi_tool.openapi_spec_parser.tool_auth_handler import 
 )
 from google.genai import types
 
+from auth_lib.validator import is_token_valid
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -56,15 +58,16 @@ class StoredCredential(NamedTuple):
 auth_receive_timeout_seconds = 60
 
 
-class ADKAgentExecutor(AgentExecutor):
+class HorizonAgentExecutor(AgentExecutor):
     """An AgentExecutor that runs an ADK-based Agent."""
 
     _awaiting_auth: dict[str, asyncio.Future]
     _credentials: dict[str, StoredCredential]
 
-    def __init__(self, runner: Runner, card: AgentCard):
+    def __init__(self, runner: Runner, card: AgentCard, tenant_id: str):
         self.runner = runner
         self._card = card
+        self._tenant_id = tenant_id
         self._awaiting_auth = {}
         self._credentials = {}
 
@@ -222,7 +225,20 @@ class ADKAgentExecutor(AgentExecutor):
         self,
         context: RequestContext,
         event_queue: EventQueue,
-    ):
+    ) -> None:
+        # The A2A server framework places request headers inside the ServerCallContext
+        # object at `context.call_context.state['headers']`. The header keys are
+        # lowercased (e.g., 'authorization'). Accessing `context.headers` will fail.
+        auth_header = context.call_context.state.get("headers", {}).get("authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise Exception("Missing or invalid Authorization header.")
+
+        token = auth_header.split(" ")[1]
+        is_valid, message = is_token_valid(token, self._tenant_id)
+
+        if not is_valid:
+            raise Exception(f"Invalid token: {message}")
+
         # Run the agent until either complete or the task is suspended.
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         # Immediately notify that the task is submitted.

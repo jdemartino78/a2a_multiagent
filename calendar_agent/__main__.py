@@ -1,4 +1,3 @@
-
 import base64
 import contextlib
 import json
@@ -96,9 +95,26 @@ def main(host: str, port: int):
         examples=['Am I free from 10am to 11am tomorrow?'],
     )
 
-    # Define OAuth2 security scheme.
+    # Define the A2A OAuth2 security scheme.
+    idp_url = os.environ.get("IDP_URL", "http://localhost:5000")
+    a2a_oauth_scheme = OAuth2SecurityScheme(
+        flows=OAuthFlows(
+            authorizationCode=AuthorizationCodeOAuthFlow(
+                authorizationUrl=f"{idp_url}/authorize",
+                tokenUrl=f"{idp_url}/generate-token",
+                scopes={
+                    "openid": "OpenID Connect scope.",
+                    "profile": "Read user profile.",
+                    "email": "Read user email.",
+                    "api:read": "Read API access.",
+                },
+            )
+        )
+    )
+
+    # Define the Google Calendar OAuth2 security scheme.
     OAUTH_SCHEME_NAME = 'CalendarGoogleOAuth'
-    oauth_scheme = OAuth2SecurityScheme(
+    google_oauth_scheme = OAuth2SecurityScheme(
         type='oauth2',
         description='OAuth2 for Google Calendar API',
         flows=OAuthFlows(
@@ -112,7 +128,7 @@ def main(host: str, port: int):
         ),
     )
 
-    # Update the AgentCard to include the 'security_schemes' and 'security' fields.
+    # Update the AgentCard to include both security schemes.
     agent_card = AgentCard(
         name='Calendar Agent',
         description="An agent that can manage a user's calendar",
@@ -122,11 +138,10 @@ def main(host: str, port: int):
         default_output_modes=['text'],
         capabilities=AgentCapabilities(streaming=True),
         skills=[skill],
-        security_schemes={OAUTH_SCHEME_NAME: SecurityScheme(root=oauth_scheme)},
-        # Declare that this scheme is required to use the agent's skills
-        security=[
-            {OAUTH_SCHEME_NAME: ['https://www.googleapis.com/auth/calendar']}
-        ],
+        security_schemes={
+            "oauth2": SecurityScheme(root=a2a_oauth_scheme),
+            OAUTH_SCHEME_NAME: SecurityScheme(root=google_oauth_scheme)
+        },
     )
 
     adk_agent = create_agent(

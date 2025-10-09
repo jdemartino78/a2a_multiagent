@@ -6,12 +6,12 @@ This document details the multi-tenant architecture implemented in the `host_age
 
 The primary goal of this architecture is to allow the `host_agent` to securely and efficiently route incoming requests to the correct downstream agent, supporting both global agents (shared by all tenants) and tenant-specific agents (isolated to a single tenant).
 
-## 2. Agent Discovery: The Agent Registry
+## 2. Agent Discovery: The Agent Registry Service
 
 The core of this architecture is a registry-based discovery mechanism.
 
-- **File:** `host_agent/agent_registry.json`
-- **Function:** This file acts as a local, static database of all available downstream agents. It is loaded into memory by the `host_agent` at startup for low-latency lookups.
+- **Service:** `demo_agent_registry`
+- **Function:** This web service acts as a dynamic database of all available downstream agents. The `host_agent` queries this service at startup to retrieve the agent cards for its specific `tenant_id`, which it then holds in memory for low-latency lookups.
 
 ### Agent Card Metadata
 
@@ -63,34 +63,6 @@ The routing logic is implemented in the `send_message` tool within `host_agent/r
 To support this logic, the `host_agent`'s API was modified.
 
 - **File:** `host_agent/__main__.py`
-- **Interface:** The Gradio UI at **http://localhost:8083** now accepts a **single JSON object**.
+- **Interface:** The Gradio UI at **http://localhost:8083** now provides a simple chat interface.
 
-This JSON object must contain two keys:
-- `"prompt"`: The user's natural language request.
-- `"session_context"`: A JSON object that holds session-level information. To use a tenant-specific agent, this object **must** contain a `"tenant_id"` key.
-
-### Usage Examples
-
-**1. Querying a Global Agent (Weather)**
-
-Here, no `tenant_id` is needed.
-
-```json
-{
-  "prompt": "What is the weather in London?",
-  "session_context": {}
-}
-```
-
-**2. Querying a Tenant-Specific Agent (Horizon)**
-
-The `tenant_id` is required to route the request to the correct Horizon agent instance.
-
-```json
-{
-  "prompt": "What is the status of my order 456?",
-  "session_context": {
-    "tenant_id": "tenant-abc"
-  }
-}
-```
+The `tenant_id` is passed as a command-line argument when starting the `host_agent`. This `tenant_id` is then stored in the session context and used for routing to tenant-specific agents.

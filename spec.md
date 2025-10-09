@@ -1,52 +1,41 @@
-# Specification: Multi-Tenant Agent Orchestration
+# spec.md
 
-## 1. Overview
+(Sections 1 and 2 - No changes)
 
-This document specifies the requirements for a multi-tenant agent orchestrator. The system is designed to have separate orchestrator instances for each tenant, with each instance configured at startup to route to the correct downstream, single-tenant agent.
+## 3. Security Model & Authentication Flow
 
-## 2. Core Components
+End-to-end security is provided by OAuth 2.0, with session state managed by a persistent `DatabaseSessionService`. The asynchronous authentication flow is managed using the A2A Task Lifecycle.
 
-### 2.1. Orchestrator Agent (`host_agent`)
+### 3.1. Authentication Flow
 
-Each tenant will have their own instance of the orchestrator agent, which serves as the single entry point for all requests for that tenant. It is responsible for discovering and invoking the correct downstream agent.
+1.  A user interacts with the `host_agent`'s Gradio UI.
+2.  The `host_agent`'s LLM routes the request to the secure `horizon_agent`.
+3.  The `send_message` tool checks the session state for an `access_token`.
+4.  If no token is found, it initiates the OAuth 2.0 flow:
+    a.  It creates a long-running A2A **Task** to represent the user's original request.
+    b.  It returns a `redirect_url` to the user, pointing to the IDP.
+5.  The user authenticates via the IDP and is redirected to the `host_agent`'s `/callback` endpoint.
+6.  The `/callback` endpoint exchanges the authorization code for an `access_token` and writes it to the session state in the SQLite database.
+7.  The user returns to the UI and sends a message (e.g., "done") to notify the agent that authentication is complete.
+8.  The `host_agent` receives the new message and re-attempts the original task.
+9.  The `send_message` tool, executing again, now finds the `access_token` in the session state.
+10. It adds the token to an `Authorization` header and successfully calls the `horizon_agent`.
 
-### 2.2. Downstream Agents
+### 3.2. A2A Task Lifecycle for Asynchronous Operations
 
-The system includes multiple downstream agents. Some agents, like a "Horizon" agent, are single-tenant, meaning there is a unique deployment for each tenant. Other agents may be multi-tenant or single-instance.
+The system uses a stateful, persistent task management flow to handle long-running asynchronous operations like user authentication.
 
-## 3. Requirements
+-   A `PersistentTaskStore`, backed by a SQLite database, is used to save and retrieve the state of every user request (`Task`).
+-   When a secure agent requires authentication, the original task is saved with a `submitted` status.
+-   After the user completes the OAuth 2.0 flow, the `/callback` endpoint retrieves the original task, updates its status to `working`, and saves the user's access token to the persistent session.
+-   This robust, stateful mechanism allows the agent to seamlessly resume the user's original request without losing context.
 
-### 3.1. Service Discovery
+### 3.3. Task Delegation and Linking
 
-- The orchestrator **must** have a mechanism to discover all available downstream agents.
-- This discovery mechanism **must** support identifying agents based on metadata tags.
-- The discovery mechanism **must not** rely on predictable URL patterns for security reasons.
+When the `host_agent` delegates a task to a downstream agent, it follows the A2A specification for task creation to ensure a robust, distributed system.
 
-### 3.2. Multi-Tenant Routing
-
-- Each orchestrator instance **must** be configured with a specific `tenant_id` at startup via a command-line argument.
-- The orchestrator **must** use its configured `tenant_id` to route requests to the correct single-tenant downstream agent instance.
-
-### 3.3. Agent Registry
-
-- To facilitate discovery, a central Agent Registry **must** be used.
-- The registry **must** store "Agent Cards" for all available downstream agents.
-- Each Agent Card in the registry **must** contain a `skills` array.
-- Each `skill` in the array **must** contain a `tags` array of strings.
-- These tags are used for routing and metadata, formatted as `"key:value"` strings.
-- For tenant-specific skills, the `tags` array **must** include a `tenant_id` tag (e.g., `"tenant_id:tenant-abc"`).
-- To differentiate skill types, the `tags` array **must** include a `type` tag (e.g., `"type:horizon"`).
-
-### 3.4. Scalability
-
-- The process of onboarding a new tenant **must not** require a code change to the orchestrator agent. It should be achievable by deploying a new, configured instance of the `host_agent` and adding a new entry to the Agent Registry.
-
-### 3.5. Orchestration Logic
-
-- The orchestrator agent's primary tool for delegation **must** be a `send_message` function.
-- This function **must** take an `agent_type` (e.g., "horizon", "weather") as a parameter, which is determined by the orchestrator's LLM based on the user's prompt and the available agents' skills.
-- The `send_message` function **must** implement conditional filtering logic:
-    - It **must** first filter the agent registry by the provided `agent_type`.
-    - If the `agent_type` is designated as tenant-specific, the function **must** then also filter by the `tenant_id` that the `host_agent` was configured with at startup.
-    - If the `agent_type` is not tenant-specific (i.e., it is a "global" agent), it **must not** filter by `tenant_id`.
-- This allows the orchestrator to resolve the correct agent URL for both single-tenant and global agents using a single, unified discovery mechanism.
+1.  **Local Task Creation**: The `host_agent` first creates a `Task` in its own `PersistentTaskStore`. This task represents the user's original request to the host.
+2.  **Message without Task ID**: The `host_agent` sends a `message:send` request to the downstream agent. Crucially, this message **does not** contain a `taskId`.
+3.  **Remote Task Creation**: The downstream agent receives this request and, per the A2A specification, creates a *new* task in its own task store.
+4.  **Response with Task Object**: The downstream agent's immediate response to the `message:send` request is a `Task` object containing the `id` of the newly created remote task.
+5.  **Linking**: The `host_agent` receives this response, extracts the `remote_task_id`, and updates its original, local `Task` record with this new ID. This creates a durable link between the parent task in the host and the child task in the downstream agent.

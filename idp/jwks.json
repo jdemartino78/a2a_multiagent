@@ -1,0 +1,12 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "n": "sSmSxBlbeGAWtDDf3KJlmFUVOL__qNZCLdXWsBDNyO-D_JbSHCGJ645v8wrUq7pyoIS0mIZ3CyRv1cWeAkJwQie3HuzQ7VOa7i5_peDqlOcLikm64D80f2kEcCjrBQdB3zl8OJU1HbQ_wL6t254SK0w73n589uZ0XVvNut_wTyCSwWuot0JdVag0NymPvwsBd1vbeflVnVVMIE7pJOIpfTSfcIOBN1KWfIke2AiTItnB3sQCu4TfNxWBddoYvLAWqW7VljqTen3XOzUPBgHbz2MXUwT0BBvrLoJLcyxWB8MPAlDcLWQb_SACuB_1Oco3qTZnOAcuL60qbrxxAIIzsQ",
+      "e": "AQAB",
+      "kid": "a2a-mock-idp-key",
+      "use": "sig",
+      "alg": "RS256"
+    }
+  ]
+}

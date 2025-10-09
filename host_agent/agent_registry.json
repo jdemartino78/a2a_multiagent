@@ -15,7 +15,12 @@
         "examples": ["what is the status of order 123?", "where is my order 456"],
         "tags": ["type:horizon", "tenant_id:tenant-abc"]
       }
-    ]
+    ],
+    "security": {
+      "type": "oauth2",
+      "authorization_uri": "http://localhost:5000/authorize",
+      "token_uri": "http://localhost:5000/generate-token"
+    }
   },
   {
     "name": "Horizon Agent - Tenant XYZ",
@@ -33,7 +38,12 @@
         "examples": ["what is the status of order 123?", "where is my order 456"],
         "tags": ["type:horizon", "tenant_id:tenant-xyz"]
       }
-    ]
+    ],
+    "security": {
+      "type": "oauth2",
+      "authorization_uri": "http://localhost:5000/authorize",
+      "token_uri": "http://localhost:5000/generate-token"
+    }
   },
   {
     "name": "Weather Agent",
@@ -51,7 +61,12 @@
         "examples": ["what is the weather in London?", "weather in Paris"],
         "tags": ["type:weather"]
       }
-    ]
+    ],
+    "security": {
+      "type": "oauth2",
+      "authorization_uri": "http://localhost:5000/authorize",
+      "token_uri": "http://localhost:5000/generate-token"
+    }
   },
   {
     "name": "Calendar Agent",
@@ -69,7 +84,12 @@
         "examples": ["Am I free from 10am to 11am tomorrow?"],
         "tags": ["type:calendar"]
       }
-    ]
+    ],
+    "security": {
+      "type": "oauth2",
+      "authorization_uri": "http://localhost:5000/authorize",
+      "token_uri": "http://localhost:5000/generate-token"
+    }
   },
   {
     "name": "Airbnb Agent",
@@ -89,6 +109,11 @@
                 "Please find a room in LA, CA, April 15, 2025, checkout date is april 18, 2 adults"
             ]
         }
-    ]
+    ],
+    "security": {
+      "type": "oauth2",
+      "authorization_uri": "http://localhost:5000/authorize",
+      "token_uri": "http://localhost:5000/generate-token"
+    }
   }
 ]

@@ -13,6 +13,7 @@ from a2a.types import (
 )
 from a2a.utils import new_agent_text_message, new_task, new_text_artifact
 from . import airbnb_agent
+from auth_lib.validator import is_token_valid
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,19 @@ class AirbnbAgentExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
+        # The A2A server framework places request headers inside the ServerCallContext
+        # object at `context.call_context.state['headers']`. The header keys are
+        # lowercased (e.g., 'authorization'). Accessing `context.headers` will fail.
+        auth_header = context.call_context.state.get("headers", {}).get("authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise Exception("Missing or invalid Authorization header.")
+
+        token = auth_header.split(" ")[1]
+        is_valid, message = is_token_valid(token)
+
+        if not is_valid:
+            raise Exception(f"Invalid token: {message}")
+
         query = context.get_user_input()
         task = context.current_task
 
